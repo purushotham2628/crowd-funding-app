@@ -55,9 +55,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       
+      // Convert deadline string to Date object if it's a string
+      const deadline = typeof req.body.deadline === 'string' 
+        ? new Date(req.body.deadline) 
+        : req.body.deadline;
+      
       // Validate request body
       const validatedData = insertProjectSchema.parse({
         ...req.body,
+        deadline,
         creatorId: userId,
       });
 
