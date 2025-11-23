@@ -1,38 +1,214 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
+import {
+  users,
+  projects,
+  transactions,
+  refundRequests,
+  type User,
+  type UpsertUser,
+  type Project,
+  type InsertProject,
+  type Transaction,
+  type InsertTransaction,
+  type RefundRequest,
+  type InsertRefundRequest,
+} from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, and, sql } from "drizzle-orm";
 
-// modify the interface with any CRUD methods
-// you might need
-
+// Interface for storage operations
 export interface IStorage {
+  // User operations (required for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  upsertUser(user: UpsertUser): Promise<User>;
+
+  // Project operations
+  getAllProjects(): Promise<Project[]>;
+  getProject(id: number): Promise<Project | undefined>;
+  getProjectWithCreator(id: number): Promise<any>;
+  getProjectsByCreator(creatorId: string): Promise<any[]>;
+  createProject(project: InsertProject): Promise<Project>;
+  updateProjectAmount(id: number, amount: string): Promise<void>;
+  markProjectWithdrawn(id: number): Promise<void>;
+
+  // Transaction operations
+  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  getTransactionsByProject(projectId: number): Promise<Transaction[]>;
+  
+  // Refund operations
+  createRefundRequest(refund: InsertRefundRequest): Promise<RefundRequest>;
+  getRefundRequestsByCreator(creatorId: string): Promise<RefundRequest[]>;
+  processRefundRequest(id: number, approved: boolean): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
-  }
-
+export class DatabaseStorage implements IStorage {
+  // User operations
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
+
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
+  }
+
+  // Project operations
+  async getAllProjects(): Promise<Project[]> {
+    return await db
+      .select()
+      .from(projects)
+      .where(eq(projects.isActive, true))
+      .orderBy(desc(projects.createdAt));
+  }
+
+  async getProject(id: number): Promise<Project | undefined> {
+    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    return project;
+  }
+
+  async getProjectWithCreator(id: number): Promise<any> {
+    const [result] = await db
+      .select({
+        id: projects.id,
+        creatorId: projects.creatorId,
+        title: projects.title,
+        description: projects.description,
+        goalAmount: projects.goalAmount,
+        currentAmount: projects.currentAmount,
+        deadline: projects.deadline,
+        imageUrl: projects.imageUrl,
+        isActive: projects.isActive,
+        withdrawn: projects.withdrawn,
+        createdAt: projects.createdAt,
+        creator: {
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          profileImageUrl: users.profileImageUrl,
+        },
+      })
+      .from(projects)
+      .leftJoin(users, eq(projects.creatorId, users.id))
+      .where(eq(projects.id, id));
+    return result;
+  }
+
+  async getProjectsByCreator(creatorId: string): Promise<any[]> {
+    const projectsList = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.creatorId, creatorId))
+      .orderBy(desc(projects.createdAt));
+
+    // Get transactions and backer counts for each project
+    const projectsWithStats = await Promise.all(
+      projectsList.map(async (project) => {
+        const projectTransactions = await this.getTransactionsByProject(project.id);
+        const backersCount = new Set(
+          projectTransactions
+            .map((t) => t.donorId || t.donorWalletAddress)
+            .filter(Boolean)
+        ).size;
+
+        return {
+          ...project,
+          transactions: projectTransactions,
+          backersCount,
+        };
+      })
+    );
+
+    return projectsWithStats;
+  }
+
+  async createProject(projectData: InsertProject): Promise<Project> {
+    const [project] = await db
+      .insert(projects)
+      .values(projectData)
+      .returning();
+    return project;
+  }
+
+  async updateProjectAmount(id: number, amount: string): Promise<void> {
+    await db
+      .update(projects)
+      .set({ currentAmount: amount })
+      .where(eq(projects.id, id));
+  }
+
+  async markProjectWithdrawn(id: number): Promise<void> {
+    await db
+      .update(projects)
+      .set({ withdrawn: true })
+      .where(eq(projects.id, id));
+  }
+
+  // Transaction operations
+  async createTransaction(transactionData: InsertTransaction): Promise<Transaction> {
+    const [transaction] = await db
+      .insert(transactions)
+      .values(transactionData)
+      .returning();
+    return transaction;
+  }
+
+  async getTransactionsByProject(projectId: number): Promise<Transaction[]> {
+    return await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.projectId, projectId))
+      .orderBy(desc(transactions.createdAt));
+  }
+
+  // Refund operations
+  async createRefundRequest(refundData: InsertRefundRequest): Promise<RefundRequest> {
+    const [refund] = await db
+      .insert(refundRequests)
+      .values(refundData)
+      .returning();
+    return refund;
+  }
+
+  async getRefundRequestsByCreator(creatorId: string): Promise<RefundRequest[]> {
+    const result = await db
+      .select({
+        id: refundRequests.id,
+        projectId: refundRequests.projectId,
+        transactionId: refundRequests.transactionId,
+        donorId: refundRequests.donorId,
+        amount: refundRequests.amount,
+        status: refundRequests.status,
+        createdAt: refundRequests.createdAt,
+        processedAt: refundRequests.processedAt,
+      })
+      .from(refundRequests)
+      .innerJoin(projects, eq(refundRequests.projectId, projects.id))
+      .where(eq(projects.creatorId, creatorId))
+      .orderBy(desc(refundRequests.createdAt));
+
+    return result;
+  }
+
+  async processRefundRequest(id: number, approved: boolean): Promise<void> {
+    await db
+      .update(refundRequests)
+      .set({
+        status: approved ? 'approved' : 'rejected',
+        processedAt: new Date(),
+      })
+      .where(eq(refundRequests.id, id));
+  }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
