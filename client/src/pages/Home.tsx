@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -7,15 +7,25 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Link } from 'wouter';
-import { Plus, LogOut, User } from 'lucide-react';
+import { Plus, LogOut, User, X } from 'lucide-react';
 import type { Project } from '@shared/schema';
 import { FundingProgress } from '@/components/FundingProgress';
 import { CountdownTimer } from '@/components/CountdownTimer';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
+const CATEGORIES = [
+  { value: 'tech', label: 'Technology' },
+  { value: 'art', label: 'Art & Design' },
+  { value: 'social', label: 'Social' },
+  { value: 'environment', label: 'Environment' },
+  { value: 'other', label: 'Other' },
+];
+
 export default function Home() {
   const { toast } = useToast();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -35,6 +45,16 @@ export default function Home() {
     queryKey: ['/api/projects'],
     enabled: isAuthenticated,
   });
+
+  // Filter projects based on category and search
+  const filteredProjects = projects?.filter((project) => {
+    const matchesCategory = !selectedCategory || project.category === selectedCategory;
+    const matchesSearch =
+      !searchQuery ||
+      project.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      project.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  }) || [];
 
   if (authLoading || !isAuthenticated) {
     return null;
@@ -105,6 +125,58 @@ export default function Home() {
           </p>
         </div>
 
+        {/* Search and Filters */}
+        <div className="mb-8 space-y-4">
+          {/* Search Input */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              data-testid="input-search"
+              className="flex-1 px-4 py-2 rounded-md border border-border bg-background text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+
+          {/* Category Filters */}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={selectedCategory === null ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelectedCategory(null)}
+              data-testid="button-filter-all"
+            >
+              All Categories
+            </Button>
+            {CATEGORIES.map((cat) => (
+              <Button
+                key={cat.value}
+                variant={selectedCategory === cat.value ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedCategory(cat.value)}
+                data-testid={`button-filter-${cat.value}`}
+              >
+                {cat.label}
+              </Button>
+            ))}
+            {selectedCategory && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectedCategory(null);
+                  setSearchQuery('');
+                }}
+                data-testid="button-clear-filters"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
+
         {isLoading ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -121,11 +193,15 @@ export default function Home() {
               </Card>
             ))}
           </div>
-        ) : !projects || projects.length === 0 ? (
+        ) : !projects || filteredProjects.length === 0 ? (
           <Card className="p-12">
             <div className="text-center space-y-4">
-              <p className="text-xl text-muted-foreground">No projects yet</p>
-              <p className="text-sm text-muted-foreground">Be the first to create a project!</p>
+              <p className="text-xl text-muted-foreground">
+                {projects?.length === 0 ? 'No projects yet' : 'No projects match your filters'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {projects?.length === 0 ? 'Be the first to create a project!' : 'Try adjusting your filters'}
+              </p>
               <Link href="/create">
                 <Button data-testid="button-create-first">
                   <Plus className="w-4 h-4 mr-2" />
@@ -136,7 +212,7 @@ export default function Home() {
           </Card>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => (
+            {filteredProjects.map((project) => (
               <Link key={project.id} href={`/project/${project.id}`}>
                 <Card
                   className="hover-elevate cursor-pointer h-full flex flex-col"
@@ -159,9 +235,14 @@ export default function Home() {
                   </CardHeader>
                   <CardContent className="p-6 flex-1 space-y-4">
                     <div>
-                      <h3 className="font-semibold text-xl text-foreground mb-2 line-clamp-2">
-                        {project.title}
-                      </h3>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <h3 className="font-semibold text-xl text-foreground line-clamp-2 flex-1">
+                          {project.title}
+                        </h3>
+                        <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary whitespace-nowrap">
+                          {CATEGORIES.find((c) => c.value === project.category)?.label || 'Other'}
+                        </span>
+                      </div>
                       <p className="text-sm text-muted-foreground line-clamp-2">
                         {project.description}
                       </p>

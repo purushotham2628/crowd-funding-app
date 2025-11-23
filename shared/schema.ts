@@ -41,6 +41,7 @@ export const projects = sqliteTable("projects", {
   creatorId: text("creator_id").notNull().references(() => users.id),
   title: text("title").notNull(),
   description: text("description").notNull(),
+  category: text("category").notNull().default('other'), // tech, art, social, environment, other
   goalAmount: text("goal_amount").notNull(), // Store decimal as text
   currentAmount: text("current_amount").notNull().default('0'),
   deadline: integer("deadline", { mode: 'timestamp' }).notNull(),
@@ -68,6 +69,7 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
 }).extend({
   goalAmount: z.string().min(1, "Goal amount is required"),
   deadline: z.string().min(1, "Deadline is required"),
+  category: z.enum(['tech', 'art', 'social', 'environment', 'other']),
 });
 
 export type InsertProject = z.infer<typeof insertProjectSchema>;

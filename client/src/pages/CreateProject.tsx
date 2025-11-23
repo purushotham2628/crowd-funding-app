@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Link, useLocation } from 'wouter';
 import { ArrowLeft } from 'lucide-react';
 import { insertProjectSchema, type InsertProject } from '@shared/schema';
@@ -24,6 +25,7 @@ const createProjectSchema = insertProjectSchema.extend({
     return !isNaN(num) && num > 0;
   }, 'Goal amount must be a positive number'),
   deadline: z.string().min(1, 'Deadline is required'),
+  category: z.enum(['tech', 'art', 'social', 'environment', 'other']),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
 });
 
@@ -55,6 +57,7 @@ export default function CreateProject() {
       description: '',
       goalAmount: '',
       deadline: '',
+      category: 'other',
       imageUrl: '',
       creatorId: '',
     },
@@ -194,6 +197,31 @@ export default function CreateProject() {
                           data-testid="input-goal-amount"
                         />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Project Category</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-category">
+                            <SelectValue placeholder="Select a category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="tech">Technology</SelectItem>
+                          <SelectItem value="art">Art & Design</SelectItem>
+                          <SelectItem value="social">Social</SelectItem>
+                          <SelectItem value="environment">Environment</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
