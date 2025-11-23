@@ -5,11 +5,19 @@ import passport from "passport";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
-import connectPg from "connect-pg-simple";
+import MemStore from "memorystore";
 import { storage } from "./storage";
+
+const isReplitEnvironment = !!process.env.REPL_ID;
+
+// Use memory store for local dev, sessions not required for SQLite local dev
+const memoryStore = new (MemStore(session))({ checkPeriod: 86400000 });
 
 const getOidcConfig = memoize(
   async () => {
+    if (!isReplitEnvironment) {
+      return null;
+    }
     return await client.discovery(
       new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
       process.env.REPL_ID!
@@ -19,22 +27,16 @@ const getOidcConfig = memoize(
 );
 
 export function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
-  const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
-    tableName: "sessions",
-  });
+  const sessionTtl = 7 * 24 * 60 * 60 * 1000;
+  
   return session({
-    secret: process.env.SESSION_SECRET!,
-    store: sessionStore,
+    secret: process.env.SESSION_SECRET || "dev-secret-key-change-in-production",
+    store: memoryStore,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       maxAge: sessionTtl,
     },
   });
@@ -42,17 +44,17 @@ export function getSession() {
 
 function updateUserSession(
   user: any,
-  tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers
+  tokens: any
 ) {
-  user.claims = tokens.claims();
-  user.access_token = tokens.access_token;
-  user.refresh_token = tokens.refresh_token;
-  user.expires_at = user.claims?.exp;
+  if (tokens.claims) {
+    user.claims = tokens.claims();
+    user.access_token = tokens.access_token;
+    user.refresh_token = tokens.refresh_token;
+    user.expires_at = user.claims?.exp;
+  }
 }
 
-async function upsertUser(
-  claims: any,
-) {
+async function upsertUser(claims: any) {
   await storage.upsertUser({
     id: claims["sub"],
     email: claims["email"],
@@ -68,6 +70,51 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  if (!isReplitEnvironment) {
+    // Local development mode - provide mock authentication
+    console.log("🔧 Running in local development mode - using mock authentication");
+    
+    app.get("/api/login", async (req, res) => {
+      const mockUser = {
+        sub: "local-dev-user-" + Date.now(),
+        email: "dev@example.com",
+        first_name: "Dev",
+        last_name: "User",
+        profile_image_url: undefined,
+      };
+      
+      await upsertUser(mockUser);
+      req.user = {
+        claims: mockUser,
+        access_token: "mock-token",
+        refresh_token: "mock-refresh",
+        expires_at: Math.floor(Date.now() / 1000) + 86400,
+      } as any;
+      
+      req.login(req.user, (err) => {
+        if (err) return res.status(500).json({ message: "Login failed" });
+        res.redirect("/");
+      });
+    });
+
+    app.get("/api/callback", (req, res) => {
+      res.redirect("/");
+    });
+
+    app.get("/api/logout", (req, res) => {
+      req.logout((err) => {
+        if (err) return res.status(500).json({ message: "Logout failed" });
+        res.redirect("/");
+      });
+    });
+
+    passport.serializeUser((user: Express.User, cb) => cb(null, user));
+    passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
+    return;
+  }
+
+  // Replit production environment - use real OIDC
   const config = await getOidcConfig();
 
   const verify: VerifyFunction = async (
@@ -80,10 +127,8 @@ export async function setupAuth(app: Express) {
     verified(null, user);
   };
 
-  // Keep track of registered strategies
   const registeredStrategies = new Set<string>();
 
-  // Helper function to ensure strategy exists for a domain
   const ensureStrategy = (domain: string) => {
     const strategyName = `replitauth:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
@@ -135,7 +180,16 @@ export async function setupAuth(app: Express) {
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  if (!isReplitEnvironment) {
+    // Local dev - skip token validation
+    return next();
+  }
+
+  if (!user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
