@@ -2,56 +2,52 @@ import { sql } from 'drizzle-orm';
 import { relations } from 'drizzle-orm';
 import {
   index,
-  jsonb,
-  pgTable,
-  timestamp,
-  varchar,
   text,
-  decimal,
-  boolean,
-  serial,
-} from "drizzle-orm/pg-core";
+  sqliteTable,
+  real,
+  integer,
+} from "drizzle-orm/sqlite-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Session storage table for Replit Auth
-export const sessions = pgTable(
+export const sessions = sqliteTable(
   "sessions",
   {
-    sid: varchar("sid").primaryKey(),
-    sess: jsonb("sess").notNull(),
-    expire: timestamp("expire").notNull(),
+    sid: text("sid").primaryKey(),
+    sess: text("sess").notNull(), // Store JSON as text in SQLite
+    expire: integer("expire", { mode: 'timestamp' }).notNull(),
   },
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
 // User storage table for Replit Auth
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
-  firstName: varchar("first_name"),
-  lastName: varchar("last_name"),
-  profileImageUrl: varchar("profile_image_url"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(),
+  email: text("email").unique(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  profileImageUrl: text("profile_image_url"),
+  createdAt: integer("created_at", { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: integer("updated_at", { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`),
 });
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
 // Projects table
-export const projects = pgTable("projects", {
-  id: serial("id").primaryKey(),
-  creatorId: varchar("creator_id").notNull().references(() => users.id),
+export const projects = sqliteTable("projects", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  creatorId: text("creator_id").notNull().references(() => users.id),
   title: text("title").notNull(),
   description: text("description").notNull(),
-  goalAmount: decimal("goal_amount", { precision: 18, scale: 8 }).notNull(),
-  currentAmount: decimal("current_amount", { precision: 18, scale: 8 }).notNull().default('0'),
-  deadline: timestamp("deadline").notNull(),
+  goalAmount: text("goal_amount").notNull(), // Store decimal as text
+  currentAmount: text("current_amount").notNull().default('0'),
+  deadline: integer("deadline", { mode: 'timestamp' }).notNull(),
   imageUrl: text("image_url"),
-  isActive: boolean("is_active").notNull().default(true),
-  withdrawn: boolean("withdrawn").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow(),
+  isActive: integer("is_active", { mode: 'boolean' }).notNull().default(true),
+  withdrawn: integer("withdrawn", { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer("created_at", { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -77,16 +73,16 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
 export type InsertProject = z.infer<typeof insertProjectSchema>;
 export type Project = typeof projects.$inferSelect;
 
-// Transactions table (supports both real blockchain and demo transactions)
-export const transactions = pgTable("transactions", {
-  id: serial("id").primaryKey(),
-  projectId: serial("project_id").notNull().references(() => projects.id),
-  donorId: varchar("donor_id").references(() => users.id),
+// Transactions table
+export const transactions = sqliteTable("transactions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  donorId: text("donor_id").references(() => users.id),
   donorWalletAddress: text("donor_wallet_address"),
-  amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
-  transactionType: varchar("transaction_type", { length: 10 }).notNull(), // 'real' or 'demo'
-  transactionHash: text("transaction_hash"),
-  createdAt: timestamp("created_at").defaultNow(),
+  amount: text("amount").notNull(), // Store decimal as text
+  transactionType: text("transaction_type").notNull().default('demo'), // 'real' or 'demo'
+  transactionHash: text("transaction_hash"), // For real blockchain transactions
+  createdAt: integer("created_at", { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const transactionsRelations = relations(transactions, ({ one }) => ({
@@ -105,22 +101,19 @@ export const insertTransactionSchema = createInsertSchema(transactions).omit({
   createdAt: true,
 }).extend({
   amount: z.string().min(1, "Amount is required"),
-  transactionType: z.enum(['real', 'demo']),
 });
 
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type Transaction = typeof transactions.$inferSelect;
 
-// Refund requests table
-export const refundRequests = pgTable("refund_requests", {
-  id: serial("id").primaryKey(),
-  projectId: serial("project_id").notNull().references(() => projects.id),
-  transactionId: serial("transaction_id").notNull().references(() => transactions.id),
-  donorId: varchar("donor_id").notNull().references(() => users.id),
-  amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default('pending'), // 'pending', 'approved', 'rejected'
-  createdAt: timestamp("created_at").defaultNow(),
-  processedAt: timestamp("processed_at"),
+// Refund Requests table
+export const refundRequests = sqliteTable("refund_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  donorId: text("donor_id").notNull().references(() => users.id),
+  creatorId: text("creator_id").notNull().references(() => users.id),
+  approved: integer("approved", { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer("created_at", { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const refundRequestsRelations = relations(refundRequests, ({ one }) => ({
@@ -128,21 +121,20 @@ export const refundRequestsRelations = relations(refundRequests, ({ one }) => ({
     fields: [refundRequests.projectId],
     references: [projects.id],
   }),
-  transaction: one(transactions, {
-    fields: [refundRequests.transactionId],
-    references: [transactions.id],
-  }),
   donor: one(users, {
     fields: [refundRequests.donorId],
+    references: [users.id],
+  }),
+  creator: one(users, {
+    fields: [refundRequests.creatorId],
     references: [users.id],
   }),
 }));
 
 export const insertRefundRequestSchema = createInsertSchema(refundRequests).omit({
   id: true,
-  status: true,
+  approved: true,
   createdAt: true,
-  processedAt: true,
 });
 
 export type InsertRefundRequest = z.infer<typeof insertRefundRequestSchema>;

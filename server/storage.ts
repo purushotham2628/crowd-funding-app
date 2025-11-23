@@ -48,18 +48,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
+    // For SQLite, we need to handle upsert differently
+    const existing = await this.getUser(userData.id);
+    
+    if (existing) {
+      // Update existing user
+      await db
+        .update(users)
+        .set({
           ...userData,
           updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return user;
+        })
+        .where(eq(users.id, userData.id));
+      
+      const [updated] = await db.select().from(users).where(eq(users.id, userData.id));
+      return updated;
+    } else {
+      // Insert new user
+      const [created] = await db
+        .insert(users)
+        .values({
+          ...userData,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      return created;
+    }
   }
 
   // Project operations
@@ -181,31 +196,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRefundRequestsByCreator(creatorId: string): Promise<RefundRequest[]> {
-    const result = await db
-      .select({
-        id: refundRequests.id,
-        projectId: refundRequests.projectId,
-        transactionId: refundRequests.transactionId,
-        donorId: refundRequests.donorId,
-        amount: refundRequests.amount,
-        status: refundRequests.status,
-        createdAt: refundRequests.createdAt,
-        processedAt: refundRequests.processedAt,
-      })
+    return await db
+      .select()
       .from(refundRequests)
-      .innerJoin(projects, eq(refundRequests.projectId, projects.id))
-      .where(eq(projects.creatorId, creatorId))
+      .where(eq(refundRequests.creatorId, creatorId))
       .orderBy(desc(refundRequests.createdAt));
-
-    return result;
   }
 
   async processRefundRequest(id: number, approved: boolean): Promise<void> {
     await db
       .update(refundRequests)
       .set({
-        status: approved ? 'approved' : 'rejected',
-        processedAt: new Date(),
+        approved,
       })
       .where(eq(refundRequests.id, id));
   }

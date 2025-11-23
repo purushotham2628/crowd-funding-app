@@ -1,15 +1,13 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import Database from 'better-sqlite3';
 import * as schema from "@shared/schema";
+import path from 'path';
 
-neonConfig.webSocketConstructor = ws;
+// Create SQLite database file in the project root
+const dbPath = path.resolve(process.cwd(), 'blockfund.db');
+const sqlite: Database.Database = new Database(dbPath);
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
+// Enable WAL mode for better concurrency
+sqlite.pragma('journal_mode = WAL');
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle({ client: pool, schema });
+export const db = drizzle({ client: sqlite, schema });
