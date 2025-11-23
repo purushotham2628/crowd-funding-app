@@ -6,6 +6,8 @@ A decentralized crowdfunding platform built on blockchain technology that allows
 
 - **Dual Transaction Modes**: Fund projects with real ETH via MetaMask or use demo mode for unlimited testing
 - **User Authentication**: Secure login via Replit Auth (OpenID Connect)
+- **Project Categories**: Organize projects by category (Technology, Art & Design, Social, Environment, Other)
+- **Advanced Search & Filtering**: Search projects by name, filter by category for easy discovery
 - **Project Creation**: Create crowdfunding projects with detailed descriptions and precise deadlines (date + time)
 - **Real-time Countdown**: See exactly how much time is left with live countdown timers
 - **Funding Progress**: Visual progress bars showing how close each project is to its goal
@@ -29,9 +31,9 @@ A decentralized crowdfunding platform built on blockchain technology that allows
 **Backend:**
 - Node.js + Express.js server
 - Drizzle ORM with type-safe database operations
-- PostgreSQL (Neon serverless) for data persistence
+- SQLite (better-sqlite3) for data persistence
 - Passport.js for authentication
-- Session-based authentication with PostgreSQL storage
+- Session-based authentication with SQLite storage
 
 **Blockchain:**
 - MetaMask wallet integration
@@ -64,23 +66,13 @@ This installs all required packages including React, Express, Drizzle ORM, and b
 
 ### Step 3: Set Up Environment Variables
 
-The database connection is automatically set up via Replit's PostgreSQL integration. The following environment variables should already be configured:
+The database uses SQLite for data persistence. No additional configuration is required - the SQLite database file (`blockfund.db`) is created automatically on first run in your project directory.
 
-- `DATABASE_URL` - PostgreSQL connection string
-- `SESSION_SECRET` - Secret for session encryption
-- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` - Database credentials
+Optional: `SESSION_SECRET` environment variable for session encryption (defaults to a secure value if not set).
 
-These are managed by Replit and don't require manual configuration.
+### Step 4: Database Initialization
 
-### Step 4: Initialize the Database (First Time Only)
-
-If this is the first time running the application, set up the database schema:
-
-```bash
-npm run db:push
-```
-
-This creates all necessary tables (users, projects, transactions, refunds, sessions) in PostgreSQL.
+The SQLite database is automatically initialized when the application starts. All necessary tables (users, projects, transactions, refunds, sessions) are created automatically using Drizzle ORM's schema.
 
 ### Step 5: Start the Application
 
