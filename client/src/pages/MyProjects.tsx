@@ -357,7 +357,7 @@ export default function MyProjects() {
             <CardContent>
               <div className="space-y-3">
                 {refundRequests
-                  .filter((req) => req.status === 'pending')
+                  .filter((req) => req.approved === false)
                   .map((req) => (
                     <div
                       key={req.id}

@@ -2,10 +2,14 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { initDb } from "./db";
 import { insertProjectSchema, insertTransactionSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Ensure DB schema exists before routes that may query it
+  await initDb();
+
   // Auth middleware
   await setupAuth(app);
 
@@ -55,15 +59,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       
-      // Convert deadline string to Date object if it's a string
-      const deadline = typeof req.body.deadline === 'string' 
-        ? new Date(req.body.deadline) 
-        : req.body.deadline;
-      
+      // Normalize incoming fields
+      let { deadline, goalAmount, category } = req.body;
+
+      // Coerce goalAmount to string
+      if (typeof goalAmount === 'number') goalAmount = goalAmount.toString();
+      if (goalAmount === undefined || goalAmount === null) goalAmount = '';
+
+      // Coerce deadline to seconds-since-epoch integer or leave for schema preprocessing
+      if (typeof deadline === 'string' && /^\d+$/.test(deadline)) {
+        // numeric string
+        deadline = parseInt(deadline, 10);
+      } else if (typeof deadline === 'string') {
+        const d = new Date(deadline);
+        if (!Number.isNaN(d.getTime())) deadline = Math.floor(d.getTime() / 1000);
+      } else if (deadline instanceof Date) {
+        deadline = Math.floor(deadline.getTime() / 1000);
+      }
+
+      // Provide category default if missing
+      if (!category) category = 'other';
+
       // Validate request body
       const validatedData = insertProjectSchema.parse({
         ...req.body,
         deadline,
+        goalAmount,
+        category,
         creatorId: userId,
       });
 
@@ -233,10 +255,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const { projectId, transactionId, amount } = req.body;
 
+      const pid = parseInt(projectId);
+      if (isNaN(pid)) return res.status(400).json({ message: 'Invalid projectId' });
+
+      const txId = transactionId ? parseInt(transactionId) : null;
+
+      const project = await storage.getProject(pid);
+      if (!project) return res.status(404).json({ message: 'Project not found' });
+
       const refund = await storage.createRefundRequest({
-        projectId: parseInt(projectId),
-        transactionId: parseInt(transactionId),
+        projectId: pid,
+        transactionId: txId,
         donorId: userId,
+        creatorId: project.creatorId,
         amount: amount.toString(),
       });
 

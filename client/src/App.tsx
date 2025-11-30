@@ -9,6 +9,7 @@ import Home from '@/pages/Home';
 import CreateProject from '@/pages/CreateProject';
 import ProjectDetail from '@/pages/ProjectDetail';
 import MyProjects from '@/pages/MyProjects';
+import Auth from '@/pages/Auth';
 import NotFound from '@/pages/not-found';
 
 function Router() {
@@ -16,6 +17,8 @@ function Router() {
 
   return (
     <Switch>
+      {/* Make /auth always available so unauthenticated users can reach the signup/login page */}
+      <Route path="/auth" component={Auth} />
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (

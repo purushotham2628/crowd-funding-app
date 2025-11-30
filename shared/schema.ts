@@ -25,6 +25,8 @@ export const sessions = sqliteTable(
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   email: text("email").unique(),
+  // Store password hash for local auth (optional)
+  passwordHash: text("password_hash"),
   firstName: text("first_name"),
   lastName: text("last_name"),
   profileImageUrl: text("profile_image_url"),
@@ -68,8 +70,28 @@ export const insertProjectSchema = createInsertSchema(projects).omit({
   createdAt: true,
 }).extend({
   goalAmount: z.string().min(1, "Goal amount is required"),
-  deadline: z.string().min(1, "Deadline is required"),
-  category: z.enum(['tech', 'art', 'social', 'environment', 'other']),
+  // Accept deadline as a string (ISO or numeric), number (unix seconds or ms), or Date.
+  // Coerce to an integer number of seconds since epoch during parsing.
+  deadline: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      // numeric string?
+      if (/^\d+$/.test(val)) return parseInt(val, 10);
+      // try ISO date string
+      const d = new Date(val);
+      if (!Number.isNaN(d.getTime())) return Math.floor(d.getTime() / 1000);
+      return val;
+    }
+    if (typeof val === 'number') {
+      // treat large numbers as ms, small as seconds
+      return val > 1e12 ? Math.floor(val / 1000) : Math.floor(val);
+    }
+    if (val instanceof Date) {
+      return Math.floor(val.getTime() / 1000);
+    }
+    return val;
+  }, z.number().int().positive()),
+  // category optional with default to 'other'
+  category: z.enum(['tech', 'art', 'social', 'environment', 'other']).optional().default('other'),
 });
 
 export type InsertProject = z.infer<typeof insertProjectSchema>;
@@ -113,6 +135,9 @@ export const refundRequests = sqliteTable("refund_requests", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   projectId: integer("project_id").notNull().references(() => projects.id),
   donorId: text("donor_id").notNull().references(() => users.id),
+  // Optionally reference the original transaction and include requested amount
+  transactionId: integer("transaction_id").references(() => transactions.id),
+  amount: text("amount").notNull(),
   creatorId: text("creator_id").notNull().references(() => users.id),
   approved: integer("approved", { mode: 'boolean' }).notNull().default(false),
   createdAt: integer("created_at", { mode: 'timestamp' }).default(sql`CURRENT_TIMESTAMP`),

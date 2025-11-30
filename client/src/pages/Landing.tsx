@@ -23,7 +23,7 @@ export default function Landing() {
             <div className="flex gap-4 justify-center flex-wrap">
               <Button
                 size="lg"
-                onClick={() => (window.location.href = '/api/login')}
+                onClick={() => (window.location.href = '/auth')}
                 className="min-h-10 gap-2"
                 data-testid="button-get-started"
               >
@@ -33,7 +33,7 @@ export default function Landing() {
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => (window.location.href = '/api/login')}
+                onClick={() => (window.location.href = '/auth')}
                 data-testid="button-login"
               >
                 Log In
@@ -119,7 +119,7 @@ export default function Landing() {
             </p>
             <Button
               size="lg"
-              onClick={() => (window.location.href = '/api/login')}
+              onClick={() => (window.location.href = '/auth')}
               data-testid="button-cta-start"
             >
               Create an Account

@@ -49,10 +49,10 @@ export class DatabaseStorage implements IStorage {
 
   async upsertUser(userData: UpsertUser): Promise<User> {
     // For SQLite, we need to handle upsert differently
-    const existing = await this.getUser(userData.id);
-    
-    if (existing) {
-      // Update existing user
+    const existingById = await this.getUser(userData.id);
+
+    if (existingById) {
+      // Update existing user by id
       await db
         .update(users)
         .set({
@@ -60,21 +60,44 @@ export class DatabaseStorage implements IStorage {
           updatedAt: new Date(),
         })
         .where(eq(users.id, userData.id));
-      
+
       const [updated] = await db.select().from(users).where(eq(users.id, userData.id));
       return updated;
-    } else {
-      // Insert new user
-      const [created] = await db
-        .insert(users)
-        .values({
-          ...userData,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .returning();
-      return created;
     }
+
+    // If no user with this id exists, try to find by email to avoid unique constraint
+    if (userData.email) {
+      const [existingByEmail] = await db.select().from(users).where(eq(users.email, userData.email));
+      if (existingByEmail) {
+        await db
+          .update(users)
+          .set({
+            ...userData,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.email, userData.email));
+
+        const [updated] = await db.select().from(users).where(eq(users.email, userData.email));
+        return updated;
+      }
+    }
+
+    // Otherwise insert new user
+    const [created] = await db
+      .insert(users)
+      .values({
+        ...userData,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return created;
+  }
+
+  // Helper to find user by email (used for local login)
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
   }
 
   // Project operations
@@ -148,9 +171,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProject(projectData: InsertProject): Promise<Project> {
+    // Drizzle expects timestamp columns to be provided as Date for SQLite.
+    const dataToInsert = {
+      ...projectData,
+      deadline: typeof projectData.deadline === 'number'
+        ? new Date(projectData.deadline * 1000)
+        : projectData.deadline,
+    } as any;
+
     const [project] = await db
       .insert(projects)
-      .values(projectData)
+      .values(dataToInsert)
       .returning();
     return project;
   }
