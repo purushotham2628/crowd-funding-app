@@ -108,8 +108,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid project ID" });
       }
 
-      const transactions = await storage.getTransactionsByProject(id);
-      res.json(transactions);
+        const transactions = await storage.getTransactionsByProject(id);
+        // Normalize createdAt to ISO strings so client date parsing is consistent
+        const normalized = transactions.map((t: any) => ({
+          ...t,
+          createdAt: t.createdAt ? (typeof t.createdAt === 'number' ? new Date(t.createdAt * 1000).toISOString() : new Date(t.createdAt).toISOString()) : null,
+        }));
+        res.json(normalized);
     } catch (error) {
       console.error("Error fetching transactions:", error);
       res.status(500).json({ message: "Failed to fetch transactions" });
@@ -243,7 +248,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const refunds = await storage.getRefundRequestsByCreator(userId);
-      res.json(refunds);
+      const normalized = refunds.map((r: any) => ({
+        ...r,
+        createdAt: r.createdAt ? (typeof r.createdAt === 'number' ? new Date(r.createdAt * 1000).toISOString() : new Date(r.createdAt).toISOString()) : null,
+      }));
+      res.json(normalized);
     } catch (error) {
       console.error("Error fetching refund requests:", error);
       res.status(500).json({ message: "Failed to fetch refund requests" });
@@ -271,7 +280,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         amount: amount.toString(),
       });
 
-      res.status(201).json(refund);
+      // Normalize createdAt
+      const normalized = {
+        ...refund,
+        createdAt: refund.createdAt ? (typeof refund.createdAt === 'number' ? new Date(refund.createdAt * 1000).toISOString() : new Date(refund.createdAt).toISOString()) : null,
+      };
+
+      res.status(201).json(normalized);
     } catch (error) {
       console.error("Error creating refund request:", error);
       res.status(500).json({ message: "Failed to create refund request" });
@@ -286,6 +301,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { approved } = req.body;
+
+      // If approving, adjust project currentAmount accordingly (only once)
+      if (approved) {
+        // Read refund to get amount and projectId
+        const [refund] = await (async () => {
+          const list = await storage.getRefundRequestsByCreator(req.user.claims.sub);
+          return list.filter((r: any) => r.id === refundId);
+        })();
+
+        if (refund && !refund.approved) {
+          // Deduct amount from project
+          const project = await storage.getProject(refund.projectId);
+          if (project) {
+            const currentAmount = parseFloat(project.currentAmount || '0');
+            const deduct = parseFloat(refund.amount || '0');
+            const newAmount = Math.max(0, currentAmount - deduct).toString();
+            await storage.updateProjectAmount(refund.projectId, newAmount);
+          }
+        }
+      }
 
       await storage.processRefundRequest(refundId, approved);
 

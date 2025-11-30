@@ -322,7 +322,7 @@ export default function ProjectDetail() {
                           </div>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(tx.createdAt!).toLocaleDateString()}
+                          {formatDeadline(tx.createdAt!)}
                         </p>
                       </div>
                     ))}

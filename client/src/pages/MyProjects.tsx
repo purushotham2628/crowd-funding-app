@@ -14,7 +14,7 @@ import type { Project, Transaction, RefundRequest } from '@shared/schema';
 import { FundingProgress } from '@/components/FundingProgress';
 import { CountdownTimer } from '@/components/CountdownTimer';
 import { TransactionTypeBadge } from '@/components/TransactionTypeBadge';
-import { getTimeRemaining } from '@/lib/dateUtils';
+import { getTimeRemaining, formatDeadline } from '@/lib/dateUtils';
 import { truncateAddress } from '@/lib/web3Utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -322,7 +322,7 @@ export default function MyProjects() {
                               </div>
                               <div className="text-right">
                                 <p className="text-xs text-muted-foreground">
-                                  {new Date(tx.createdAt!).toLocaleDateString()}
+                                  {formatDeadline(tx.createdAt!)}
                                 </p>
                                 {tx.transactionHash && (
                                   <p className="text-xs text-muted-foreground">
@@ -368,7 +368,7 @@ export default function MyProjects() {
                           Refund Request: {req.amount} ETH
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Requested on {new Date(req.createdAt!).toLocaleDateString()}
+                          Requested on {formatDeadline(req.createdAt!)}
                         </p>
                       </div>
                       <Button
