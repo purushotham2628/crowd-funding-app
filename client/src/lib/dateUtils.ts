@@ -1,5 +1,7 @@
-export function formatDeadline(deadline: Date | string): string {
+export function formatDeadline(deadline: Date | string | null | undefined): string {
+  if (!deadline) return 'N/A';
   const date = typeof deadline === 'string' ? new Date(deadline) : deadline;
+  if (isNaN(date.getTime())) return 'Invalid date';
   return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
