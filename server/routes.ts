@@ -159,6 +159,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Project is not active" });
       }
 
+      // Check if goal has been reached (block further transactions)
+      const currentAmount = parseFloat(project.currentAmount);
+      const goalAmount = parseFloat(project.goalAmount);
+      if (currentAmount >= goalAmount) {
+        return res.status(400).json({ message: "Funding goal has been reached. No more transactions accepted." });
+      }
+
       // Create transaction
       const transaction = await storage.createTransaction({
         projectId,
@@ -170,7 +177,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Update project current amount
-      const currentAmount = parseFloat(project.currentAmount);
       const newAmount = (currentAmount + amountNum).toString();
       await storage.updateProjectAmount(projectId, newAmount);
 

@@ -50,6 +50,11 @@ export default function ProjectDetail() {
     enabled: isAuthenticated && !!id,
   });
 
+  const { data: refunds } = useQuery<any[]>({
+    queryKey: ['/api/refund-requests'],
+    enabled: isAuthenticated && !!id,
+  });
+
   const fundMutation = useMutation({
     mutationFn: async ({ transactionType, txHash }: { transactionType: 'real' | 'demo'; txHash?: string }) => {
       return await apiRequest('POST', `/api/projects/${id}/fund`, {
@@ -84,6 +89,71 @@ export default function ProjectDetail() {
       toast({
         title: 'Error',
         description: error.message || 'Failed to process funding',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const refundMutation = useMutation({
+    mutationFn: async ({ transactionId, amount }: { transactionId: number; amount: string }) => {
+      return await apiRequest('POST', '/api/refund-requests', {
+        projectId: parseInt(id || '0'),
+        transactionId,
+        amount,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Refund Requested',
+        description: 'Your refund request has been submitted.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/refund-requests'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to request refund',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const withdrawMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest('POST', `/api/projects/${id}/withdraw`, {});
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Success',
+        description: 'Funds withdrawn successfully!',
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/projects', id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/my-projects'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to withdraw funds',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const processRefundMutation = useMutation({
+    mutationFn: async ({ refundId, approved }: { refundId: number; approved: boolean }) => {
+      return await apiRequest('POST', `/api/refund-requests/${refundId}/process`, { approved });
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Refund Updated',
+        description: 'Refund request has been processed.',
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/refund-requests'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to process refund',
         variant: 'destructive',
       });
     },
@@ -321,15 +391,95 @@ export default function ProjectDetail() {
                             </p>
                           </div>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDeadline(tx.createdAt!)}
-                        </p>
+                        <div className="flex flex-col items-end gap-1">
+                          <p className="text-xs text-muted-foreground">
+                            {formatDeadline(tx.createdAt!)}
+                          </p>
+                          {user?.id === tx.donorId && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs h-6"
+                              onClick={() => {
+                                const amount = tx.amount;
+                                if (confirm(`Request refund for ${amount} ETH?`)) {
+                                  refundMutation.mutate({ transactionId: tx.id!, amount });
+                                }
+                              }}
+                            >
+                              Refund
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
               </CardContent>
             </Card>
+
+            {/* Withdraw Button (for creator) */}
+            {user?.id === project?.creatorId && project && parseFloat(project.currentAmount) >= parseFloat(project.goalAmount) && !project.withdrawn && (
+              <Card className="border-green-200 bg-green-50">
+                <CardHeader>
+                  <CardTitle className="text-green-900">Withdraw Funds</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-green-800 mb-4">
+                    Your project has reached its funding goal. You can now withdraw the funds.
+                  </p>
+                  <Button
+                    onClick={() => {
+                      if (confirm('Withdraw all funds to your wallet?')) {
+                        withdrawMutation.mutate();
+                      }
+                    }}
+                    className="w-full bg-green-600 hover:bg-green-700"
+                  >
+                    Withdraw Funds
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Refund Requests (for creator) */}
+            {user?.id === project?.creatorId && refunds && refunds.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Refund Requests</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {refunds.filter((r: any) => r.projectId === parseInt(id || '0')).map((req: any) => (
+                      <div
+                        key={req.id}
+                        className="flex items-center justify-between p-2 rounded-md bg-muted/50 border border-border"
+                      >
+                        <div>
+                          <p className="text-sm font-medium">{req.amount} ETH refund</p>
+                          <p className="text-xs text-muted-foreground">
+                            {req.approved ? 'Approved' : 'Pending'}
+                          </p>
+                        </div>
+                        {!req.approved && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              if (confirm(`Approve refund of ${req.amount} ETH?`)) {
+                                processRefundMutation.mutate({ refundId: req.id, approved: true });
+                              }
+                            }}
+                          >
+                            Approve
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Funding Sidebar */}
