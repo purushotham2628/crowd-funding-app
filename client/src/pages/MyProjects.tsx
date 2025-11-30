@@ -42,11 +42,21 @@ export default function MyProjects() {
 
   const { data: projects, isLoading } = useQuery<ProjectWithStats[]>({
     queryKey: ['/api/my-projects'],
+    queryFn: async () => {
+      const res = await fetch('/api/my-projects', { credentials: 'include' });
+      if (!res.ok) throw new Error(`Failed to fetch projects: ${res.status}`);
+      return res.json();
+    },
     enabled: isAuthenticated,
   });
 
   const { data: refundRequests } = useQuery<RefundRequest[]>({
     queryKey: ['/api/refund-requests'],
+    queryFn: async () => {
+      const res = await fetch('/api/refund-requests', { credentials: 'include' });
+      if (!res.ok) throw new Error(`Failed to fetch refunds: ${res.status}`);
+      return res.json();
+    },
     enabled: isAuthenticated,
   });
 

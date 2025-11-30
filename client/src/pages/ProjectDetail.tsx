@@ -42,16 +42,31 @@ export default function ProjectDetail() {
 
   const { data: project, isLoading } = useQuery<Project & { creator: UserType }>({
     queryKey: ['/api/projects', id],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${id}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Failed to fetch project: ${res.status}`);
+      return res.json();
+    },
     enabled: isAuthenticated && !!id,
   });
 
-  const { data: transactions } = useQuery<Transaction[]>({
+  const { data: transactions, isLoading: txLoading } = useQuery<Transaction[]>({
     queryKey: ['/api/projects', id, 'transactions'],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${id}/transactions`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Failed to fetch transactions: ${res.status}`);
+      return res.json();
+    },
     enabled: isAuthenticated && !!id,
   });
 
   const { data: refunds } = useQuery<any[]>({
     queryKey: ['/api/refund-requests'],
+    queryFn: async () => {
+      const res = await fetch('/api/refund-requests', { credentials: 'include' });
+      if (!res.ok) throw new Error(`Failed to fetch refunds: ${res.status}`);
+      return res.json();
+    },
     enabled: isAuthenticated && !!id,
   });
 
@@ -366,7 +381,13 @@ export default function ProjectDetail() {
                 <CardTitle>Backers & Transactions</CardTitle>
               </CardHeader>
               <CardContent>
-                {!transactions || transactions.length === 0 ? (
+                {txLoading ? (
+                  <div className="space-y-3">
+                    {[...Array(2)].map((_, i) => (
+                      <Skeleton key={i} className="h-16 w-full" />
+                    ))}
+                  </div>
+                ) : !transactions || transactions.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-8">
                     No transactions yet. Be the first to fund this project!
                   </p>

@@ -110,10 +110,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const transactions = await storage.getTransactionsByProject(id);
         // Normalize createdAt to ISO strings so client date parsing is consistent
-        const normalized = transactions.map((t: any) => ({
-          ...t,
-          createdAt: t.createdAt ? (typeof t.createdAt === 'number' ? new Date(t.createdAt * 1000).toISOString() : new Date(t.createdAt).toISOString()) : null,
-        }));
+        const normalized = transactions.map((t: any) => {
+          let dateTime = t.createdAt;
+          if (typeof dateTime === 'number') {
+            // SQLite stores seconds, JS needs milliseconds; check if it's already in ms
+            dateTime = dateTime > 1e12 ? dateTime : dateTime * 1000;
+            dateTime = new Date(dateTime).toISOString();
+          } else if (typeof dateTime === 'string') {
+            dateTime = new Date(dateTime).toISOString();
+          } else {
+            dateTime = null;
+          }
+          return { ...t, createdAt: dateTime };
+        });
         res.json(normalized);
     } catch (error) {
       console.error("Error fetching transactions:", error);
@@ -180,7 +189,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newAmount = (currentAmount + amountNum).toString();
       await storage.updateProjectAmount(projectId, newAmount);
 
-      res.status(201).json(transaction);
+      // Normalize transaction response
+      const normalized = {
+        ...transaction,
+        createdAt: (() => {
+          if (!transaction.createdAt) return null;
+          let dt: any = transaction.createdAt;
+          if (typeof dt === 'number') {
+            dt = dt > 1e12 ? dt : dt * 1000;
+            return new Date(dt).toISOString();
+          }
+          return typeof dt === 'string' ? new Date(dt).toISOString() : null;
+        })(),
+      };
+
+      res.status(201).json(normalized);
     } catch (error) {
       console.error("Error creating transaction:", error);
       res.status(500).json({ message: "Failed to create transaction" });
@@ -254,10 +277,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const refunds = await storage.getRefundRequestsByCreator(userId);
-      const normalized = refunds.map((r: any) => ({
-        ...r,
-        createdAt: r.createdAt ? (typeof r.createdAt === 'number' ? new Date(r.createdAt * 1000).toISOString() : new Date(r.createdAt).toISOString()) : null,
-      }));
+      const normalized = refunds.map((r: any) => {
+        let dateTime = r.createdAt;
+        if (typeof dateTime === 'number') {
+          dateTime = dateTime > 1e12 ? dateTime : dateTime * 1000;
+          dateTime = new Date(dateTime).toISOString();
+        } else if (typeof dateTime === 'string') {
+          dateTime = new Date(dateTime).toISOString();
+        } else {
+          dateTime = null;
+        }
+        return { ...r, createdAt: dateTime };
+      });
       res.json(normalized);
     } catch (error) {
       console.error("Error fetching refund requests:", error);
@@ -289,7 +320,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Normalize createdAt
       const normalized = {
         ...refund,
-        createdAt: refund.createdAt ? (typeof refund.createdAt === 'number' ? new Date(refund.createdAt * 1000).toISOString() : new Date(refund.createdAt).toISOString()) : null,
+        createdAt: (() => {
+          if (!refund.createdAt) return null;
+          let dt: any = refund.createdAt;
+          if (typeof dt === 'number') {
+            dt = dt > 1e12 ? dt : dt * 1000;
+            return new Date(dt).toISOString();
+          }
+          return typeof dt === 'string' ? new Date(dt).toISOString() : null;
+        })(),
       };
 
       res.status(201).json(normalized);
